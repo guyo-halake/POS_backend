@@ -28,8 +28,17 @@ app.use('/api/users', usersRouter);
 app.use('/api/sales', salesRouter);
 app.use('/api/mpesa', mpesaRouter);
 
-// Initialize DB tables
-initSalesTables().then(() => console.log('Sales tables initialized')).catch(console.error);
+// Initialize DB tables (Wrapped to prevent startup crash)
+const startDb = async () => {
+  try {
+    await initSalesTables();
+    console.log('Sales tables initialized');
+  } catch (err) {
+    console.error('Failed to initialize sales tables:', err);
+    // We do NOT exit the process, allowing health check to work
+  }
+};
+startDb();
 
 // Serve static files from the React frontend app
 const frontendPath = path.join(__dirname, '../freshfity-pos-connect/dist');
