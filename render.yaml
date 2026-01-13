@@ -21,3 +21,5 @@ services:
         sync: false
       - key: MPESA_CONSUMER_SECRET
         sync: false
+      - key: MPESA_CALLBACK_URL
+        sync: false
