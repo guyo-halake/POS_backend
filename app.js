@@ -8,6 +8,7 @@ import usersRouter from './routes/users.js';
 import salesRouter from './routes/sales.js';
 import mpesaRouter from './routes/mpesaRoutes.js';
 import { initSalesTables } from './models/sale.js';
+import { initDatabase } from './database/init.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -31,10 +32,11 @@ app.use('/api/mpesa', mpesaRouter);
 // Initialize DB tables (Wrapped to prevent startup crash)
 const startDb = async () => {
   try {
-    await initSalesTables();
-    console.log('Sales tables initialized');
+    await initDatabase(); // Init users/products
+    await initSalesTables(); // Init sales/mpesa
+    console.log('Database tables initialized');
   } catch (err) {
-    console.error('Failed to initialize sales tables:', err);
+    console.error('Failed to initialize database tables:', err);
     // We do NOT exit the process, allowing health check to work
   }
 };
