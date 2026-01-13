@@ -1,0 +1,136 @@
+import pool from '../database/db.js';
+
+// Get all sales with items
+export async function getAllSales() {
+  const [sales] = await pool.query('SELECT * FROM sales ORDER BY timestamp DESC');
+  
+  if (sales.length === 0) return [];
+
+  const saleIds = sales.map(s => s.id);
+  // Need to handle large number of IDs if necessary, but this is fine for now
+  const [items] = await pool.query('SELECT * FROM sale_items WHERE saleId IN (?)', [saleIds]);
+  
+  // Attach items to sales
+  return sales.map(sale => ({
+    ...sale,
+    items: items.filter(item => item.saleId === sale.id)
+  }));
+}
+
+// Get dashboard stats
+export async function getDashboardStats(range = 'today') {
+  const connection = await pool.getConnection();
+  try {
+    let dateFilter;
+    
+    if (range === 'today') {
+      dateFilter = 'DATE(timestamp) = CURDATE()';
+    } else if (range === 'week') {
+      dateFilter = 'timestamp >= DATE_SUB(NOW(), INTERVAL 1 WEEK)';
+    } else if (range === 'month') {
+      dateFilter = 'timestamp >= DATE_SUB(NOW(), INTERVAL 1 MONTH)';
+    } else if (range === 'year') {
+      dateFilter = 'timestamp >= DATE_SUB(NOW(), INTERVAL 1 YEAR)';
+    } else {
+      dateFilter = '1=1';
+    }
+
+    // Total Sales
+    const [salesResult] = await connection.query(`SELECT SUM(total) as total, COUNT(*) as count FROM sales WHERE ${dateFilter}`);
+    
+    // Payment Methods
+    const [paymentResult] = await connection.query(`
+      SELECT paymentMethod, SUM(total) as total, COUNT(*) as count 
+      FROM sales WHERE ${dateFilter} 
+      GROUP BY paymentMethod
+    `);
+
+    // Top Selling Products
+    const [topProducts] = await connection.query(`
+      SELECT productName, SUM(quantity) as sold, SUM(price * quantity) as revenue 
+      FROM sale_items 
+      JOIN sales ON sale_items.saleId = sales.id 
+      WHERE ${dateFilter}
+      GROUP BY productId, productName 
+      ORDER BY sold DESC 
+      LIMIT 10
+    `);
+
+    return {
+      totalRevenue: salesResult[0].total || 0,
+      totalCount: salesResult[0].count || 0,
+      payments: paymentResult,
+      topProducts
+    };
+
+  } finally {
+    connection.release();
+  }
+}
+
+// Create a new sale
+export async function createSale(sale) {
+  const connection = await pool.getConnection();
+  try {
+    await connection.beginTransaction();
+
+    const { id, total, paymentMethod, cashierId, cashierName, mpesaRef, items } = sale;
+
+    // Insert into sales table
+    // Note: 'id' from frontend is currently a string `sale-${Date.now()}`. 
+    // We can use it or let DB generate an ID. 
+    // If we want offline support, client-generated IDs are better. Let's stick to the client ID or generated string.
+    // However, usually DB IDs are ints. Let's see. 'id' in useStore is string.
+    // Let's use string VARCHAR(50) for id.
+    
+    await connection.query(
+      'INSERT INTO sales (id, total, paymentMethod, cashierId, cashierName, mpesaRef) VALUES (?, ?, ?, ?, ?, ?)',
+      [id, total, paymentMethod, cashierId, cashierName, mpesaRef]
+    );
+
+    // Insert items
+    for (const item of items) {
+      await connection.query(
+        'INSERT INTO sale_items (saleId, productId, productName, quantity, price) VALUES (?, ?, ?, ?, ?)',
+        [id, item.product.id, item.product.name, item.quantity, item.product.price]
+      );
+    }
+
+    await connection.commit();
+    return id;
+  } catch (err) {
+    await connection.rollback();
+    throw err;
+  } finally {
+    connection.release();
+  }
+}
+
+// Helper to init tables (can be called once)
+export async function initSalesTables() {
+  const createSales = `
+    CREATE TABLE IF NOT EXISTS sales (
+      id VARCHAR(50) PRIMARY KEY,
+      total DECIMAL(10, 2) NOT NULL,
+      paymentMethod VARCHAR(20),
+      cashierId VARCHAR(50),
+      cashierName VARCHAR(100),
+      mpesaRef VARCHAR(50),
+      timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    )
+  `;
+  const createItems = `
+    CREATE TABLE IF NOT EXISTS sale_items (
+      id INT AUTO_INCREMENT PRIMARY KEY,
+      saleId VARCHAR(50),
+      productId INT,
+      productName VARCHAR(255),
+      quantity DECIMAL(10, 2),
+      price DECIMAL(10, 2),
+      FOREIGN KEY (saleId) REFERENCES sales(id) ON DELETE CASCADE
+    )
+  `;
+  
+  await pool.query(createSales);
+  await pool.query(createItems);
+}
