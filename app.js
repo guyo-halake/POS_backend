@@ -35,6 +35,12 @@ app.get('*', (req, res) => {
   res.sendFile(path.join(frontendPath, 'index.html'));
 });
 
-app.listen(PORT, '0.0.0.0', () => {
-  // Server started. Use a logging service here for production if needed.
-});
+// Export the app for Vercel/Serverless
+export default app;
+
+// Only start the server if this file is being run directly (not imported)
+if (process.env.NODE_ENV !== 'production') {
+  app.listen(PORT, '0.0.0.0', () => {
+    console.log(`Server is running on port ${PORT}`);
+  });
+}
