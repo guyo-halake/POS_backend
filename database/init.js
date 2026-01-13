@@ -33,21 +33,22 @@ export async function initDatabase() {
     `);
 
     // Seed Users
-    const [users] = await pool.query('SELECT COUNT(*) as count FROM users');
-    if (users[0].count === 0) {
-      console.log('Seeding initial users...');
-      for (const user of initialUsers) {
-        try {
+    console.log('Ensuring all initial users exist...');
+    for (const user of initialUsers) {
+      try {
+        const [existing] = await pool.query('SELECT id FROM users WHERE pin = ?', [user.pin]);
+        if (existing.length === 0) {
           await pool.query(
             'INSERT INTO users (name, pin, email, role, active) VALUES (?, ?, ?, ?, 1)',
             [user.name, user.pin, user.email, user.role]
           );
-        } catch (e) {
-            console.log(`Skipping user ${user.name}: ${e.message}`);
+          console.log(`User ${user.name} created.`);
         }
+      } catch (e) {
+          console.log(`Error checking/creating user ${user.name}: ${e.message}`);
       }
-      console.log('Users seeded successfully.');
     }
+    console.log('User seeding check complete.');
 
     // Seed Products
     const [products] = await pool.query('SELECT COUNT(*) as count FROM products');
