@@ -68,10 +68,12 @@ export const initiateSTKPush = async (req, res) => {
     console.log('M-Pesa STK Response:', data);
 
     if (data.ResponseCode === "0") {
-      // Save the CheckoutRequestID to DB to link the callback later
-      // We assume an 'sales' or 'mpesa_transactions' table exists or we update the sale note
-      // For now, we'll just log it or update the sale if it was already created.
-      // Since the frontend is waiting, we return success.
+      // Save pending transaction
+      await pool.query(
+        'INSERT INTO mpesa_transactions (checkoutRequestID, merchantRequestID, status, phoneNumber) VALUES (?, ?, ?, ?)',
+        [data.CheckoutRequestID, data.MerchantRequestID, 'PENDING', formattedPhone]
+      );
+
       return res.json({ success: true, data });
     } else {
       console.error('M-Pesa STK Push Failed:', data);
@@ -87,35 +89,60 @@ export const initiateSTKPush = async (req, res) => {
 // Handle Callback
 export const handleCallback = async (req, res) => {
   console.log('--- M-Pesa Callback Received ---');
-  console.log(JSON.stringify(req.body, null, 2));
+  // console.log(JSON.stringify(req.body, null, 2));
 
-  // logic to process result
-  const body = req.body.Body.stkCallback;
-  
-  if (body.ResultCode === 0) {
-    // Payment Successful
-    const metadata = body.CallbackMetadata.Item;
-    const amount = metadata.find(i => i.Name === 'Amount')?.Value;
-    const mpesaReceiptNumber = metadata.find(i => i.Name === 'MpesaReceiptNumber')?.Value;
-    const phoneNumber = metadata.find(i => i.Name === 'PhoneNumber')?.Value;
-    
-    // TODO: Update database 'sales' table where CheckoutRequestID matches (if stored)
-    // Or insert into mpesa_transactions table
-    
-    console.log(`Payment Confirmed: ${mpesaReceiptNumber} - KES ${amount} from ${phoneNumber}`);
-    
-    // Example: Save to a simple in-memory store or DB if we had the schema
-    // await pool.query("INSERT INTO mpesa_logs SET ?", { ... })
-  } else {
-    console.log('Payment Failed/Cancelled');
+  try {
+    const body = req.body.Body.stkCallback;
+    const checkoutRequestID = body.CheckoutRequestID;
+    const resultCode = body.ResultCode;
+    const resultDesc = body.ResultDesc;
+
+    if (resultCode === 0) {
+      // Payment Successful
+      const metadata = body.CallbackMetadata.Item;
+      const amount = metadata.find(i => i.Name === 'Amount')?.Value;
+      const mpesaReceiptNumber = metadata.find(i => i.Name === 'MpesaReceiptNumber')?.Value;
+      const phoneNumber = metadata.find(i => i.Name === 'PhoneNumber')?.Value;
+      
+      console.log(`Payment Confirmed: ${mpesaReceiptNumber}`);
+      
+      await pool.query(
+        'UPDATE mpesa_transactions SET status = ?, resultCode = ?, resultDesc = ?, mpesaReceiptNumber = ?, amount = ? WHERE checkoutRequestID = ?',
+        ['COMPLETED', resultCode, resultDesc, mpesaReceiptNumber, amount, checkoutRequestID]
+      );
+    } else {
+      console.log('Payment Failed/Cancelled');
+      await pool.query(
+        'UPDATE mpesa_transactions SET status = ?, resultCode = ?, resultDesc = ? WHERE checkoutRequestID = ?',
+        ['FAILED', resultCode, resultDesc, checkoutRequestID]
+      );
+    }
+
+    res.json({ result: "ok" });
+  } catch (error) {
+    console.error('Callback Error:', error);
+    res.status(500).json({ result: "error" });
   }
-
-  res.json({ result: "ok" });
 };
 
 // Check Status (Polling)
 export const checkStatus = async (req, res) => {
-  // logic to query Safaricom status API if needed
-  // For now, we rely on the callback updating the DB
-  res.json({ status: 'pending' }); // Placeholder
+  try {
+    const { checkoutRequestId } = req.params;
+    const [rows] = await pool.query('SELECT * FROM mpesa_transactions WHERE checkoutRequestID = ?', [checkoutRequestId]);
+    
+    if (rows.length === 0) {
+      return res.json({ status: 'PENDING' }); // Unknown ID, treat as pending logic or 404
+    }
+
+    const transaction = rows[0];
+    res.json({
+      status: transaction.status,
+      mpesaReceiptNumber: transaction.mpesaReceiptNumber,
+      amount: transaction.amount
+    });
+  } catch (error) {
+    console.error('Check Status Error:', error);
+    res.status(500).json({ error: 'Failed to check status' });
+  }
 };

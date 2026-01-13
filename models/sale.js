@@ -130,7 +130,22 @@ export async function initSalesTables() {
       FOREIGN KEY (saleId) REFERENCES sales(id) ON DELETE CASCADE
     )
   `;
+
+  const createMpesa = `
+    CREATE TABLE IF NOT EXISTS mpesa_transactions (
+      checkoutRequestID VARCHAR(100) PRIMARY KEY,
+      merchantRequestID VARCHAR(100),
+      status VARCHAR(20) DEFAULT 'PENDING',
+      resultCode INT,
+      resultDesc VARCHAR(255),
+      mpesaReceiptNumber VARCHAR(50),
+      amount DECIMAL(10, 2),
+      phoneNumber VARCHAR(20),
+      timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    )
+  `;
   
   await pool.query(createSales);
   await pool.query(createItems);
+  await pool.query(createMpesa);
 }
