@@ -1,6 +1,15 @@
 import fetch from 'node-fetch';
-import { mpesaConfig } from '../secure/mpesaCredentials.js';
 import pool from '../database/db.js';
+
+const mpesaConfig = {
+    consumerKey: process.env.MPESA_CONSUMER_KEY,
+    consumerSecret: process.env.MPESA_CONSUMER_SECRET,
+    businessShortCode: "174379",
+    passKey: "bfb279f9aa9bdbcf158e97dd71a467cd2e0c893059b10f78e6b72ada1ed2c919",
+    callBackURL: process.env.MPESA_CALLBACK_URL || "https://freshfity-backend.onrender.com/api/mpesa/callback",
+    accountReference: "FreshFityPOS",
+    transactionDesc: "Payment for Goods"
+};
 
 // Helper to get access token
 async function getAccessToken() {
