@@ -1,4 +1,5 @@
 import pool from './db.js';
+import { initialUsers, initialProducts } from './seed_data.js';
 
 export async function initDatabase() {
   try {
@@ -31,14 +32,44 @@ export async function initDatabase() {
       )
     `);
 
-    // Check if admin exists
-    const [users] = await pool.query('SELECT * FROM users WHERE pin = ?', ['1111']);
-    if (users.length === 0) {
-      console.log('Seeding default admin user...');
-      await pool.query(`
-        INSERT INTO users (name, pin, email, role, active)
-        VALUES ('Admin', '1111', 'admin@freshfity.com', 'admin', 1)
-      `);
+    // Seed Users
+    const [users] = await pool.query('SELECT COUNT(*) as count FROM users');
+    if (users[0].count === 0) {
+      console.log('Seeding initial users...');
+      for (const user of initialUsers) {
+        try {
+          await pool.query(
+            'INSERT INTO users (name, pin, email, role, active) VALUES (?, ?, ?, ?, 1)',
+            [user.name, user.pin, user.email, user.role]
+          );
+        } catch (e) {
+            console.log(`Skipping user ${user.name}: ${e.message}`);
+        }
+      }
+      console.log('Users seeded successfully.');
+    }
+
+    // Seed Products
+    const [products] = await pool.query('SELECT COUNT(*) as count FROM products');
+    if (products[0].count === 0) {
+      console.log('Seeding initial products...');
+      const connection = await pool.getConnection(); // Use transaction to batch
+      try {
+        await connection.beginTransaction();
+        for (const product of initialProducts) {
+          await connection.query(
+            'INSERT INTO products (name, category, price, unit, stock, barcode, image, lowStockThreshold) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+            [product.name, product.category, product.price, product.unit, product.stock, product.barcode, product.image, product.lowStockThreshold]
+          );
+        }
+        await connection.commit();
+        console.log(`Seeded ${initialProducts.length} products successfully.`);
+      } catch (err) {
+        await connection.rollback();
+        console.error('Failed to seed products:', err);
+      } finally {
+        connection.release();
+      }
     }
 
     console.log('Database initialized: users and products tables ready.');
