@@ -11,8 +11,26 @@ const mpesaConfig = {
     transactionDesc: "Payment for Goods"
 };
 
+// Token Cache
+let tokenCache = {
+  token: null,
+  expiry: 0
+};
+
 // Helper to get access token
 async function getAccessToken() {
+  // Check cache first
+  const now = Date.now();
+  if (tokenCache.token && tokenCache.expiry > now) {
+    return tokenCache.token;
+  }
+
+  if (!mpesaConfig.consumerKey || !mpesaConfig.consumerSecret || 
+      mpesaConfig.consumerKey === 'your_consumer_key_here' || 
+      mpesaConfig.consumerSecret === 'your_consumer_secret_here') {
+      console.error("❌ M-Pesa keys are missing or set to default placeholders. Please update freshfity-pos-backend/.env");
+      return null;
+  }
   const auth = Buffer.from(`${mpesaConfig.consumerKey}:${mpesaConfig.consumerSecret}`).toString('base64');
   try {
     const response = await fetch('https://sandbox.safaricom.co.ke/oauth/v1/generate?grant_type=client_credentials', {
@@ -20,12 +38,32 @@ async function getAccessToken() {
         Authorization: `Basic ${auth}`
       }
     });
-    const data = await response.json();
+
+    const text = await response.text();
+    // console.log("M-Pesa Token Response Status:", response.status); 
+    // console.log("M-Pesa Token Response Body:", text);
+
     if (!response.ok) {
-      console.error('M-Pesa Access Token Failed:', data);
-      return null;
+        console.error('M-Pesa Access Token Failed. Status:', response.status);
+        return null; // Or handle error appropriately
     }
-    return data.access_token;
+
+    try {
+        const data = JSON.parse(text);
+        // Cache the token (expires_in is usually 3599 seconds)
+        // Subtract 60 seconds for safety buffer
+        const expiresInMs = (parseInt(data.expires_in) - 60) * 1000;
+        tokenCache = {
+          token: data.access_token,
+          expiry: now + expiresInMs
+        };
+        console.log("✅ Fetched new M-Pesa Access Token");
+        return data.access_token;
+    } catch (e) {
+        console.error("Failed to parse M-Pesa response as JSON:", e);
+        return null;
+    }
+
   } catch (error) {
     console.error('Error getting access token:', error);
     return null;
@@ -134,21 +172,76 @@ export const handleCallback = async (req, res) => {
   }
 };
 
-// Check Status (Polling)
+// Check Status (Polling with Active Query)
 export const checkStatus = async (req, res) => {
   try {
     const { checkoutRequestId } = req.params;
     const [rows] = await pool.query('SELECT * FROM mpesa_transactions WHERE checkoutRequestID = ?', [checkoutRequestId]);
     
     if (rows.length === 0) {
-      return res.json({ status: 'PENDING' }); // Unknown ID, treat as pending logic or 404
+      return res.json({ status: 'PENDING' }); // Unknown ID, treat as pending
     }
 
     const transaction = rows[0];
+
+    // If still PENDING, let's ask Safaricom directly (M-Pesa Express Query)
+    if (transaction.status === 'PENDING') {
+       const token = await getAccessToken();
+       if (token) {
+           const timestamp = new Date().toISOString().replace(/[^0-9]/g, '').slice(0, 14);
+           const password = Buffer.from(`${mpesaConfig.businessShortCode}${mpesaConfig.passKey}${timestamp}`).toString('base64');
+           
+           const payload = {
+            BusinessShortCode: mpesaConfig.businessShortCode,
+            Password: password,
+            Timestamp: timestamp,
+            CheckoutRequestID: checkoutRequestId
+           };
+
+           try {
+             const queryRes = await fetch('https://sandbox.safaricom.co.ke/mpesa/stkpushquery/v1/query', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${token}`
+                },
+                body: JSON.stringify(payload)
+             });
+             
+             const queryData = await queryRes.json();
+            //  console.log('Query Response:', queryData);
+             
+             if (queryData.ResultCode === "0") {
+                 // Success!
+                 const successDesc = "Payment confirmed via Query";
+                 console.log(`Payment Confirmed via Query!`);
+                 await pool.query(
+                    'UPDATE mpesa_transactions SET status = ?, resultCode = ?, resultDesc = ? WHERE checkoutRequestID = ?',
+                    ['COMPLETED', queryData.ResultCode, queryData.ResultDesc || successDesc, checkoutRequestId]
+                  );
+                  // Refresh transaction object
+                  transaction.status = 'COMPLETED';
+             } else if (queryData.ResultCode && queryData.ResultCode !== "0" && queryData.errorCode !== "500.001.1001" && !queryData.ResultDesc?.toLowerCase().includes("process")) { 
+                 // Note: 500.001.1001 means "The transaction is being processed", so we ignore it and keep PENDING
+                 // Other codes mean failure/cancellation
+                 console.log(`Payment Failed via Query: ${queryData.ResultDesc}`);
+                 await pool.query(
+                    'UPDATE mpesa_transactions SET status = ?, resultCode = ?, resultDesc = ? WHERE checkoutRequestID = ?',
+                    ['FAILED', queryData.ResultCode, queryData.ResultDesc, checkoutRequestId]
+                  );
+                  transaction.status = 'FAILED';
+             }
+           } catch(err) {
+               console.error("Query API Error:", err);
+           }
+       }
+    }
+
     res.json({
       status: transaction.status,
-      mpesaReceiptNumber: transaction.mpesaReceiptNumber,
-      amount: transaction.amount
+      mpesaReceiptNumber: transaction.mpesaReceiptNumber || 'N/A', // Query API doesn't return receipt ref sometimes?
+      amount: transaction.amount,
+      phoneNumber: transaction.phoneNumber
     });
   } catch (error) {
     console.error('Check Status Error:', error);
