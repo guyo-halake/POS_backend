@@ -94,6 +94,18 @@ export async function initDatabase() {
       )
     `);
 
+    // Audit Logs Table
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS audit_logs (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        user_id INT,
+        user_name VARCHAR(255),
+        action VARCHAR(255),
+        details TEXT,
+        timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
+
     // Column Migration Helper
     const addColumn = async (table, column, definition) => {
       try {
