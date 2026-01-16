@@ -1,5 +1,6 @@
 import express from 'express';
 import { getAllSales, createSale, getDashboardStats } from '../models/sale.js';
+import { createLog } from '../models/auditLog.js';
 const router = express.Router();
 
 router.get('/', async (req, res) => {
@@ -25,8 +26,9 @@ router.get('/stats', async (req, res) => {
 
 router.post('/', async (req, res) => {
   try {
-    await createSale(req.body);
-    res.json({ success: true });
+    const saleId = await createSale(req.body);
+    await createLog(req.body.cashierId, req.body.cashierName || 'Unknown', 'SALE', `Sale completed. Total: ${req.body.total}`);
+    res.json({ success: true, id: saleId });
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: 'Failed to record sale' });

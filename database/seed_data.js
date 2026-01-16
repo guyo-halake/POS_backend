@@ -1,5 +1,11 @@
 export const initialUsers = [
   {
+    name: 'System Developer',
+    pin: '9999',
+    role: 'developer',
+    email: 'dev@freshfity.com'
+  },
+  {
     name: 'Razak Guyo',
     pin: '0000',
     role: 'admin',

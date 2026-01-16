@@ -1,7 +1,15 @@
 import pool from '../database/db.js';
 
-export async function getAllProducts() {
-  const [rows] = await pool.query('SELECT * FROM products');
+export async function getAllProducts(businessId) {
+  let query = 'SELECT * FROM products';
+  const params = [];
+  
+  if (businessId && businessId !== 'GLOBAL' && businessId !== '*') {
+    query += ' WHERE business_id = ?';
+    params.push(businessId);
+  }
+  
+  const [rows] = await pool.query(query, params);
   return rows;
 }
 
@@ -11,10 +19,10 @@ export async function getProductById(id) {
 }
 
 export async function createProduct(product) {
-  const { name, category, price, unit, stock, barcode, image, lowStockThreshold } = product;
+  const { business_id, name, category, price, unit, stock, barcode, image, lowStockThreshold } = product;
   const [result] = await pool.query(
-    'INSERT INTO products (name, category, price, unit, stock, barcode, image, lowStockThreshold) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
-    [name, category, price, unit, stock, barcode, image, lowStockThreshold]
+    'INSERT INTO products (business_id, name, category, price, unit, stock, barcode, image, lowStockThreshold) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
+    [business_id || 1, name, category, price, unit, stock, barcode, image, lowStockThreshold]
   );
   return result.insertId;
 }

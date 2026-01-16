@@ -16,21 +16,21 @@ export async function createUser({ name, pin, email, role }) {
 }
 
 export async function updateUser(id, updates) {
-  const { name, pin, email, role, active } = updates;
-  // Dynamic query building would be better, but fixed is fine for now
-  // We'll update the fields provided
+  const { name, pin, email, role, active, otp, otpExpires } = updates;
   let query = 'UPDATE users SET ';
   const params = [];
   const fields = [];
-  
+
   if (name !== undefined) { fields.push('name = ?'); params.push(name); }
   if (pin !== undefined) { fields.push('pin = ?'); params.push(pin); }
   if (email !== undefined) { fields.push('email = ?'); params.push(email); }
   if (role !== undefined) { fields.push('role = ?'); params.push(role); }
   if (active !== undefined) { fields.push('active = ?'); params.push(active ? 1 : 0); }
+  if (otp !== undefined) { fields.push('otp = ?'); params.push(otp); }
+  if (otpExpires !== undefined) { fields.push('otpExpires = ?'); params.push(otpExpires); }
 
   if (fields.length === 0) return 0;
-  
+
   query += fields.join(', ') + ' WHERE id = ?';
   params.push(id);
 
