@@ -3,123 +3,123 @@ import { initialUsers, initialProducts } from './seed_data.js';
 
 export async function initDatabase() {
   try {
-    // Users Table
-    await pool.query(`
-      CREATE TABLE IF NOT EXISTS users (
-        id INT AUTO_INCREMENT PRIMARY KEY,
-        name VARCHAR(255) NOT NULL,
-        pin VARCHAR(10) NOT NULL UNIQUE,
-        email VARCHAR(255),
-        role VARCHAR(50) DEFAULT 'staff',
-        active BOOLEAN DEFAULT 1,
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-      )
-    `);
-
-    // Products Table
-    await pool.query(`
-      CREATE TABLE IF NOT EXISTS products (
-        id INT AUTO_INCREMENT PRIMARY KEY,
-        name VARCHAR(255) NOT NULL,
-        category VARCHAR(100),
-        price DECIMAL(10, 2) NOT NULL,
-        unit VARCHAR(20),
-        stock INT DEFAULT 0,
-        barcode VARCHAR(100),
-        image TEXT,
-        lowStockThreshold INT DEFAULT 10,
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-      )
-    `);
-
-    // Businesses Table
     await pool.query(`
       CREATE TABLE IF NOT EXISTS businesses (
-        id INT AUTO_INCREMENT PRIMARY KEY,
-        name VARCHAR(255) NOT NULL,
-        email VARCHAR(255),
-        phone VARCHAR(50),
-        subscription_status VARCHAR(50) DEFAULT 'active',
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        name TEXT NOT NULL,
+        email TEXT,
+        phone TEXT,
+        logo TEXT,
+        payment_config TEXT,
+        mobile_app_requested INTEGER DEFAULT 0,
+        subscription_status TEXT DEFAULT 'active',
+        created_at TEXT DEFAULT CURRENT_TIMESTAMP
       )
     `);
 
-    // Ensure default business exists
-    const [biz] = await pool.query('SELECT * FROM businesses WHERE id = 1');
-    if (biz.length === 0) {
-      await pool.query('INSERT INTO businesses (id, name, email) VALUES (1, "Fresh Fity Supermarket", "admin@freshfity.com")');
-      console.log('Default Business (Fresh Fity) created.');
-    }
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS users (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        name TEXT NOT NULL,
+        pin TEXT NOT NULL UNIQUE,
+        email TEXT,
+        role TEXT DEFAULT 'staff',
+        active INTEGER DEFAULT 1,
+        business_id INTEGER DEFAULT 1,
+        otp TEXT,
+        otpExpires INTEGER,
+        created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (business_id) REFERENCES businesses(id)
+      )
+    `);
 
-    // Suppliers Table
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS products (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        business_id INTEGER DEFAULT 1,
+        name TEXT NOT NULL,
+        category TEXT,
+        price REAL NOT NULL,
+        unit TEXT,
+        stock INTEGER DEFAULT 0,
+        barcode TEXT,
+        image TEXT,
+        lowStockThreshold INTEGER DEFAULT 10,
+        created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (business_id) REFERENCES businesses(id)
+      )
+    `);
+
     await pool.query(`
       CREATE TABLE IF NOT EXISTS suppliers (
-        id INT AUTO_INCREMENT PRIMARY KEY,
-        business_id INT,
-        name VARCHAR(255) NOT NULL,
-        phone VARCHAR(50),
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        business_id INTEGER,
+        name TEXT NOT NULL,
+        phone TEXT,
         goods TEXT,
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        created_at TEXT DEFAULT CURRENT_TIMESTAMP,
         FOREIGN KEY (business_id) REFERENCES businesses(id)
       )
     `);
 
-    // Sales Table
     await pool.query(`
       CREATE TABLE IF NOT EXISTS sales (
-        id VARCHAR(50) PRIMARY KEY,
-        business_id INT,
-        cashier_id INT,
-        cashier_name VARCHAR(255),
-        total DECIMAL(10, 2),
-        payment_method VARCHAR(50),
-        mpesa_ref VARCHAR(100),
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-        synced BOOLEAN DEFAULT 1,
+        id TEXT PRIMARY KEY,
+        business_id INTEGER DEFAULT 1,
+        total REAL,
+        paymentMethod TEXT,
+        cashierId TEXT,
+        cashierName TEXT,
+        mpesaRef TEXT,
+        timestamp TEXT DEFAULT CURRENT_TIMESTAMP,
+        synced INTEGER DEFAULT 1,
         FOREIGN KEY (business_id) REFERENCES businesses(id)
       )
     `);
 
-    // Sale Items Table
     await pool.query(`
       CREATE TABLE IF NOT EXISTS sale_items (
-        id INT AUTO_INCREMENT PRIMARY KEY,
-        sale_id VARCHAR(50),
-        product_id INT,
-        product_name VARCHAR(255),
-        quantity INT,
-        price DECIMAL(10, 2),
-        total DECIMAL(10, 2),
-        FOREIGN KEY (sale_id) REFERENCES sales(id)
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        saleId TEXT,
+        productId INTEGER,
+        productName TEXT,
+        quantity REAL,
+        price REAL,
+        total REAL,
+        FOREIGN KEY (saleId) REFERENCES sales(id) ON DELETE CASCADE
       )
     `);
 
-    // Audit Logs Table
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS mpesa_transactions (
+        checkoutRequestID TEXT PRIMARY KEY,
+        merchantRequestID TEXT,
+        status TEXT DEFAULT 'PENDING',
+        resultCode INTEGER,
+        resultDesc TEXT,
+        mpesaReceiptNumber TEXT,
+        amount REAL,
+        phoneNumber TEXT,
+        timestamp TEXT DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
+
     await pool.query(`
       CREATE TABLE IF NOT EXISTS audit_logs (
-        id INT AUTO_INCREMENT PRIMARY KEY,
-        user_id INT,
-        user_name VARCHAR(255),
-        action VARCHAR(255),
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id INTEGER,
+        user_name TEXT,
+        action TEXT,
         details TEXT,
-        timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        timestamp TEXT DEFAULT CURRENT_TIMESTAMP
       )
     `);
 
-    // Column Migration Helper
-    const addColumn = async (table, column, definition) => {
-      try {
-        await pool.query(`ALTER TABLE ${table} ADD COLUMN ${column} ${definition}`);
-        console.log(`Added ${column} to ${table}`);
-      } catch (e) {
-        if (!e.message.includes("Duplicate column")) {
-          console.log(`Note for ${table}.${column}: ${e.message}`);
-        }
-      }
-    };
-
-    await addColumn('users', 'business_id', 'INT DEFAULT 1');
-    await addColumn('products', 'business_id', 'INT DEFAULT 1');
+    const [biz] = await pool.query('SELECT * FROM businesses WHERE id = 1');
+    if (biz.length === 0) {
+      await pool.query('INSERT INTO businesses (id, name, email) VALUES (1, ?, ?)', ['Fresh Fity Supermarket', 'admin@freshfity.com']);
+      console.log('Default Business (Fresh Fity) created.');
+    }
     
     // Seed Users
     console.log('Ensuring all initial users exist...');
@@ -128,7 +128,7 @@ export async function initDatabase() {
         const [existing] = await pool.query('SELECT id FROM users WHERE pin = ?', [user.pin]);
         if (existing.length === 0) {
           await pool.query(
-            'INSERT INTO users (name, pin, email, role, active) VALUES (?, ?, ?, ?, 1)',
+            'INSERT INTO users (name, pin, email, role, active, business_id) VALUES (?, ?, ?, ?, 1, 1)',
             [user.name, user.pin, user.email, user.role]
           );
           console.log(`User ${user.name} created.`);

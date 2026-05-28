@@ -8,6 +8,7 @@ import productsRouter from './routes/products.js';
 import usersRouter from './routes/users.js';
 import salesRouter from './routes/sales.js';
 import mpesaRouter from './routes/mpesaRoutes.js';
+import paystackRouter from './routes/paystackRoutes.js';
 import auditLogsRouter from './routes/auditLogs.js';
 import { initSalesTables } from './models/sale.js';
 import { initDatabase } from './database/init.js';
@@ -16,7 +17,7 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 const app = express();
-const PORT = process.env.PORT || 5000;
+const PORT = process.env.PORT || 5001;
 
 app.use(cors());
 app.use(bodyParser.json());
@@ -30,6 +31,7 @@ app.use('/api/products', productsRouter);
 app.use('/api/users', usersRouter);
 app.use('/api/sales', salesRouter);
 app.use('/api/mpesa', mpesaRouter);
+app.use('/api/paystack', paystackRouter);
 app.use('/api/audit-logs', auditLogsRouter);
 
 // Initialize DB tables (Wrapped to prevent startup crash)
