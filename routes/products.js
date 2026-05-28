@@ -9,7 +9,7 @@ router.get('/', async (req, res) => {
   try {
     // In a full implementation, this comes from req.user.businessId (JWT)
     // For now, we trust the client to send the context or default to Business 1
-    const businessId = req.headers['x-business-id'] || 1; 
+    const businessId = req.headers['x-business-id'] || '11111111-1111-1111-1111-111111111111'; 
     const products = await getAllProducts(businessId);
     res.json(products);
   } catch (err) {
@@ -20,7 +20,7 @@ router.get('/', async (req, res) => {
 // Add a product
 router.post('/', async (req, res) => {
   try {
-    const businessId = req.headers['x-business-id'] || 1;
+    const businessId = req.headers['x-business-id'] || '11111111-1111-1111-1111-111111111111';
     const productData = { ...req.body, business_id: businessId };
     
     const id = await createProduct(productData);

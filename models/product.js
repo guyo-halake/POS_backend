@@ -1,4 +1,5 @@
 import pool from '../database/db.js';
+import { v4 as uuidv4 } from 'uuid';
 
 export async function getAllProducts(businessId) {
   let query = 'SELECT * FROM products';
@@ -20,11 +21,12 @@ export async function getProductById(id) {
 
 export async function createProduct(product) {
   const { business_id, name, category, price, unit, stock, barcode, image, lowStockThreshold } = product;
-  const [result] = await pool.query(
-    'INSERT INTO products (business_id, name, category, price, unit, stock, barcode, image, lowStockThreshold) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
-    [business_id || 1, name, category, price, unit, stock, barcode, image, lowStockThreshold]
+  const id = uuidv4();
+  await pool.query(
+    'INSERT INTO products (id, business_id, name, category, price, unit, stock, barcode, image, lowStockThreshold) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+    [id, business_id || '11111111-1111-1111-1111-111111111111', name, category, price, unit, stock, barcode, image, lowStockThreshold]
   );
-  return result.insertId;
+  return id;
 }
 
 export async function updateProduct(id, updates) {

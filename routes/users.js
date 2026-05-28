@@ -3,6 +3,7 @@ import pool from '../database/db.js';
 import { getUserByPin, getAllUsers, createUser, updateUser, deleteUser } from '../models/user.js';
 import { createLog } from '../models/auditLog.js';
 import nodemailer from 'nodemailer';
+import { v4 as uuidv4 } from 'uuid';
 const router = express.Router();
 
 // Gateway for future Twilio/WhatsApp integration
@@ -212,16 +213,17 @@ router.post('/create-client', async (req, res) => {
         await connection.beginTransaction();
 
         // 1. Create Business
-        const [bizResult] = await connection.query(
-            'INSERT INTO businesses (name, email, phone, logo, payment_config) VALUES (?, ?, ?, ?, ?)',
-            [business.name, business.email, business.phone, business.logo, JSON.stringify(business.paymentConfig)]
+        const businessId = uuidv4();
+        await connection.query(
+            'INSERT INTO businesses (id, name, email, phone, logo, payment_config) VALUES (?, ?, ?, ?, ?, ?)',
+            [businessId, business.name, business.email, business.phone, business.logo, JSON.stringify(business.paymentConfig)]
         );
-        const businessId = bizResult.insertId;
 
         // 2. Create Manager (User) linked to Business
+        const managerId = uuidv4();
         await connection.query(
-            'INSERT INTO users (name, email, pin, role, active, business_id) VALUES (?, ?, ?, ?, 1, ?)',
-            [manager.name, manager.email, manager.pin, manager.role, businessId]
+            'INSERT INTO users (id, name, email, pin, role, active, business_id) VALUES (?, ?, ?, ?, ?, 1, ?)',
+            [managerId, manager.name, manager.email, manager.pin, manager.role, businessId]
         );
 
         await connection.commit();

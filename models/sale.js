@@ -77,22 +77,17 @@ export async function createSale(sale) {
     const { id, total, paymentMethod, cashierId, cashierName, mpesaRef, items } = sale;
 
     // Insert into sales table
-    // Note: 'id' from frontend is currently a string `sale-${Date.now()}`. 
-    // We can use it or let DB generate an ID. 
-    // If we want offline support, client-generated IDs are better. Let's stick to the client ID or generated string.
-    // However, usually DB IDs are ints. Let's see. 'id' in useStore is string.
-    // Let's use string VARCHAR(50) for id.
-    
     await connection.query(
-      'INSERT INTO sales (id, total, paymentMethod, cashierId, cashierName, mpesaRef) VALUES (?, ?, ?, ?, ?, ?)',
+      'INSERT INTO sales (id, total, paymentMethod, cashierId, cashierName, mpesaRef, is_synced, updated_at) VALUES (?, ?, ?, ?, ?, ?, 0, CURRENT_TIMESTAMP)',
       [id, total, paymentMethod, cashierId, cashierName, mpesaRef]
     );
 
     // Insert items
+    const { v4: uuidv4 } = await import('uuid');
     for (const item of items) {
       await connection.query(
-        'INSERT INTO sale_items (saleId, productId, productName, quantity, price) VALUES (?, ?, ?, ?, ?)',
-        [id, item.product.id, item.product.name, item.quantity, item.product.price]
+        'INSERT INTO sale_items (id, saleId, productId, productName, quantity, price, total, is_synced, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, 0, CURRENT_TIMESTAMP)',
+        [uuidv4(), id, item.product.id, item.product.name, item.quantity, item.product.price, item.product.price * item.quantity]
       );
     }
 
@@ -111,22 +106,28 @@ export async function initSalesTables() {
   const createSales = `
     CREATE TABLE IF NOT EXISTS sales (
       id VARCHAR(50) PRIMARY KEY,
+      business_id TEXT DEFAULT 'default_business',
       total DECIMAL(10, 2) NOT NULL,
       paymentMethod VARCHAR(20),
       cashierId VARCHAR(50),
       cashierName VARCHAR(100),
       mpesaRef VARCHAR(50),
+      is_synced INTEGER DEFAULT 0,
+      updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
       timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     )
   `;
   const createItems = `
     CREATE TABLE IF NOT EXISTS sale_items (
-      id INT AUTO_INCREMENT PRIMARY KEY,
+      id VARCHAR(50) PRIMARY KEY,
       saleId VARCHAR(50),
-      productId INT,
+      productId VARCHAR(50),
       productName VARCHAR(255),
       quantity DECIMAL(10, 2),
       price DECIMAL(10, 2),
+      total DECIMAL(10, 2),
+      is_synced INTEGER DEFAULT 0,
+      updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
       FOREIGN KEY (saleId) REFERENCES sales(id) ON DELETE CASCADE
     )
   `;
