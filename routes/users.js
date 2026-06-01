@@ -3,6 +3,7 @@ import pool from '../database/db.js';
 import { getUserByPin, getAllUsers, createUser, updateUser, deleteUser } from '../models/user.js';
 import { createLog } from '../models/auditLog.js';
 import nodemailer from 'nodemailer';
+import { v4 as uuidv4 } from 'uuid';
 const router = express.Router();
 
 // Gateway for future Twilio/WhatsApp integration
@@ -147,13 +148,13 @@ router.post('/reset-pin', async (req, res) => {
 });
 // Create new user (Sign Up)
 router.post('/', async (req, res) => {
-  const { name, pin, email, role } = req.body;
-  if (!name || !pin || !email || !role) {
+  const { name, pin, email, role, business_id } = req.body;
+  if (!name || !pin || !role) {
     return res.status(400).json({ success: false, error: 'Missing fields' });
   }
-  // Create user in MySQL
-  const id = await createUser({ name, pin, email, role });
-  res.json({ success: true, user: { id, name, pin, email, role, active: 1 } });
+  // Create user in MySQL/SQLite
+  const id = await createUser({ name, pin, email, role, business_id });
+  res.json({ success: true, user: { id, name, pin, email, role, active: 1, business_id } });
 });
 
 router.put('/:id', async (req, res) => {
@@ -212,16 +213,17 @@ router.post('/create-client', async (req, res) => {
         await connection.beginTransaction();
 
         // 1. Create Business
-        const [bizResult] = await connection.query(
-            'INSERT INTO businesses (name, email, phone, logo, payment_config) VALUES (?, ?, ?, ?, ?)',
-            [business.name, business.email, business.phone, business.logo, JSON.stringify(business.paymentConfig)]
+        const businessId = uuidv4();
+        await connection.query(
+            'INSERT INTO businesses (id, name, email, phone, logo, payment_config) VALUES (?, ?, ?, ?, ?, ?)',
+            [businessId, business.name, business.email, business.phone, business.logo, JSON.stringify(business.paymentConfig)]
         );
-        const businessId = bizResult.insertId;
 
         // 2. Create Manager (User) linked to Business
+        const managerId = uuidv4();
         await connection.query(
-            'INSERT INTO users (name, email, pin, role, active, business_id) VALUES (?, ?, ?, ?, 1, ?)',
-            [manager.name, manager.email, manager.pin, manager.role, businessId]
+            'INSERT INTO users (id, name, email, pin, role, active, business_id) VALUES (?, ?, ?, ?, ?, 1, ?)',
+            [managerId, manager.name, manager.email, manager.pin, manager.role, businessId]
         );
 
         await connection.commit();
@@ -269,7 +271,8 @@ router.post('/create-client', async (req, res) => {
     } catch (error) {
         await connection.rollback();
         console.error("Create Client Error:", error);
-        res.status(500).json({ success: false, error: error.code === 'ER_DUP_ENTRY' ? 'PIN already in use' : 'Failed to create client' });
+        const isDuplicate = error.code === 'ER_DUP_ENTRY' || error.code === 'SQLITE_CONSTRAINT_UNIQUE' || error.message?.includes('UNIQUE constraint failed');
+        res.status(500).json({ success: false, error: isDuplicate ? 'PIN already in use. Please choose a different 4-digit PIN.' : 'Failed to create client' });
     } finally {
         connection.release();
     }

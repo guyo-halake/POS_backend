@@ -1,4 +1,5 @@
 import pool from '../database/db.js';
+import { v4 as uuidv4 } from 'uuid';
 
 export async function getUserByPin(pin) {
   const [rows] = await pool.query('SELECT * FROM users WHERE pin = ? AND active = 1', [pin]);
@@ -10,9 +11,11 @@ export async function getAllUsers() {
   return rows;
 }
 
-export async function createUser({ name, pin, email, role }) {
-  const [result] = await pool.query('INSERT INTO users (name, pin, email, role, active) VALUES (?, ?, ?, ?, 1)', [name, pin, email, role]);
-  return result.insertId;
+export async function createUser({ name, pin, email, role, business_id }) {
+  const id = uuidv4();
+  const bizId = business_id || '11111111-1111-1111-1111-111111111111';
+  await pool.query('INSERT INTO users (id, name, pin, email, role, active, business_id) VALUES (?, ?, ?, ?, ?, 1, ?)', [id, name, pin, email || null, role, bizId]);
+  return id;
 }
 
 export async function updateUser(id, updates) {

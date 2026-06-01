@@ -5,38 +5,58 @@ export async function initDatabase() {
   try {
     await pool.query(`
       CREATE TABLE IF NOT EXISTS businesses (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        id TEXT PRIMARY KEY,
         name TEXT NOT NULL,
         email TEXT,
         phone TEXT,
+        location TEXT,
         logo TEXT,
         payment_config TEXT,
         mobile_app_requested INTEGER DEFAULT 0,
         subscription_status TEXT DEFAULT 'active',
+        is_synced INTEGER DEFAULT 0,
+        updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
         created_at TEXT DEFAULT CURRENT_TIMESTAMP
       )
     `);
 
     await pool.query(`
       CREATE TABLE IF NOT EXISTS users (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        id TEXT PRIMARY KEY,
         name TEXT NOT NULL,
         pin TEXT NOT NULL UNIQUE,
         email TEXT,
         role TEXT DEFAULT 'staff',
         active INTEGER DEFAULT 1,
-        business_id INTEGER DEFAULT 1,
+        business_id TEXT DEFAULT '11111111-1111-1111-1111-111111111111',
         otp TEXT,
         otpExpires INTEGER,
+        is_synced INTEGER DEFAULT 0,
+        last_active TEXT,
+        updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
         created_at TEXT DEFAULT CURRENT_TIMESTAMP,
         FOREIGN KEY (business_id) REFERENCES businesses(id)
       )
     `);
 
+    // Add location to existing businesses table if it doesn't exist
+    try {
+      await pool.query('ALTER TABLE businesses ADD COLUMN location TEXT');
+    } catch (e) {
+      // Ignore if column already exists
+    }
+
+    // Add last_active to existing users table if it doesn't exist
+    try {
+      await pool.query('ALTER TABLE users ADD COLUMN last_active TEXT');
+    } catch (e) {
+      // Ignore if column already exists
+    }
+
     await pool.query(`
       CREATE TABLE IF NOT EXISTS products (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        business_id INTEGER DEFAULT 1,
+        id TEXT PRIMARY KEY,
+        business_id TEXT DEFAULT '11111111-1111-1111-1111-111111111111',
         name TEXT NOT NULL,
         category TEXT,
         price REAL NOT NULL,
@@ -45,6 +65,8 @@ export async function initDatabase() {
         barcode TEXT,
         image TEXT,
         lowStockThreshold INTEGER DEFAULT 10,
+        is_synced INTEGER DEFAULT 0,
+        updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
         created_at TEXT DEFAULT CURRENT_TIMESTAMP,
         FOREIGN KEY (business_id) REFERENCES businesses(id)
       )
@@ -52,11 +74,13 @@ export async function initDatabase() {
 
     await pool.query(`
       CREATE TABLE IF NOT EXISTS suppliers (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        business_id INTEGER,
+        id TEXT PRIMARY KEY,
+        business_id TEXT DEFAULT '11111111-1111-1111-1111-111111111111',
         name TEXT NOT NULL,
         phone TEXT,
         goods TEXT,
+        is_synced INTEGER DEFAULT 0,
+        updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
         created_at TEXT DEFAULT CURRENT_TIMESTAMP,
         FOREIGN KEY (business_id) REFERENCES businesses(id)
       )
@@ -65,27 +89,30 @@ export async function initDatabase() {
     await pool.query(`
       CREATE TABLE IF NOT EXISTS sales (
         id TEXT PRIMARY KEY,
-        business_id INTEGER DEFAULT 1,
+        business_id TEXT DEFAULT '11111111-1111-1111-1111-111111111111',
         total REAL,
         paymentMethod TEXT,
         cashierId TEXT,
         cashierName TEXT,
         mpesaRef TEXT,
+        is_synced INTEGER DEFAULT 0,
+        updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
         timestamp TEXT DEFAULT CURRENT_TIMESTAMP,
-        synced INTEGER DEFAULT 1,
         FOREIGN KEY (business_id) REFERENCES businesses(id)
       )
     `);
 
     await pool.query(`
       CREATE TABLE IF NOT EXISTS sale_items (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        id TEXT PRIMARY KEY,
         saleId TEXT,
-        productId INTEGER,
+        productId TEXT,
         productName TEXT,
         quantity REAL,
         price REAL,
         total REAL,
+        is_synced INTEGER DEFAULT 0,
+        updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
         FOREIGN KEY (saleId) REFERENCES sales(id) ON DELETE CASCADE
       )
     `);
@@ -115,9 +142,10 @@ export async function initDatabase() {
       )
     `);
 
-    const [biz] = await pool.query('SELECT * FROM businesses WHERE id = 1');
+    const defaultBizId = '11111111-1111-1111-1111-111111111111';
+    const [biz] = await pool.query('SELECT * FROM businesses WHERE id = ?', [defaultBizId]);
     if (biz.length === 0) {
-      await pool.query('INSERT INTO businesses (id, name, email) VALUES (1, ?, ?)', ['Fresh Fity Supermarket', 'admin@freshfity.com']);
+      await pool.query('INSERT INTO businesses (id, name, email) VALUES (?, ?, ?)', [defaultBizId, 'Fresh Fity Supermarket', 'admin@freshfity.com']);
       console.log('Default Business (Fresh Fity) created.');
     }
     
@@ -127,9 +155,10 @@ export async function initDatabase() {
       try {
         const [existing] = await pool.query('SELECT id FROM users WHERE pin = ?', [user.pin]);
         if (existing.length === 0) {
+          const { v4: uuidv4 } = await import('uuid');
           await pool.query(
-            'INSERT INTO users (name, pin, email, role, active, business_id) VALUES (?, ?, ?, ?, 1, 1)',
-            [user.name, user.pin, user.email, user.role]
+            'INSERT INTO users (id, name, pin, email, role, active, business_id) VALUES (?, ?, ?, ?, ?, 1, ?)',
+            [uuidv4(), user.name, user.pin, user.email, user.role, defaultBizId]
           );
           console.log(`User ${user.name} created.`);
         }
@@ -146,11 +175,11 @@ export async function initDatabase() {
       const connection = await pool.getConnection(); // Use transaction to batch
       try {
         await connection.beginTransaction();
+        const { v4: uuidv4 } = await import('uuid');
         for (const product of initialProducts) {
-          // Hardcode business_id = 1 for initial seed
           await connection.query(
-            'INSERT INTO products (business_id, name, category, price, unit, stock, barcode, image, lowStockThreshold) VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?)',
-            [product.name, product.category, product.price, product.unit, product.stock, product.barcode, product.image, product.lowStockThreshold]
+            'INSERT INTO products (id, business_id, name, category, price, unit, stock, barcode, image, lowStockThreshold) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+            [uuidv4(), defaultBizId, product.name, product.category, product.price, product.unit, product.stock, product.barcode, product.image, product.lowStockThreshold]
           );
         }
         await connection.commit();
