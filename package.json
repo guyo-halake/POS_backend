@@ -9,7 +9,7 @@
   "scripts": {
     "start": "node app.js",
     "dev": "nodemon app.js",
-    "build": "ncc build app.js -o dist -m && cp .env dist/.env"
+    "build": "ncc build app.js -o dist -m && cp .env dist/.env || true"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.106.2",
