@@ -10,9 +10,11 @@ dotenv.config();
 // is not provided. Prefer OS app-data directories so the DB is per-user and
 // survives app updates.
 function defaultDbPath() {
-  // Allow explicit override via env var
   if (process.env.SQLITE_PATH && process.env.SQLITE_PATH.trim() !== '') {
-    return process.env.SQLITE_PATH;
+    const customPath = process.env.SQLITE_PATH.trim();
+    const customDir = path.dirname(customPath);
+    if (!fs.existsSync(customDir)) fs.mkdirSync(customDir, { recursive: true });
+    return customPath;
   }
 
   const home = os.homedir();
