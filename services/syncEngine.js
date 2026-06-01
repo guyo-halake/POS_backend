@@ -1,4 +1,5 @@
 import { createClient } from '@supabase/supabase-js';
+import WebSocket from 'ws';
 import pool from '../database/db.js';
 
 const SUPABASE_URL = process.env.SUPABASE_URL;
@@ -7,7 +8,12 @@ const SUPABASE_SERVICE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
 let supabase = null;
 
 if (SUPABASE_URL && SUPABASE_SERVICE_KEY) {
-  supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY);
+  supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY, {
+    auth: { persistSession: false },
+    realtime: {
+      transport: WebSocket
+    }
+  });
   console.log('Supabase Sync Engine initialized.');
 } else {
   console.log('Supabase Sync Engine skipped: Missing SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY in .env');
