@@ -26,9 +26,9 @@ export async function pushSync() {
       if (unsynced.length > 0) {
         console.log(`Pushing ${unsynced.length} records from local ${table} to Supabase...`);
         
-        // Remove is_synced column before pushing
+        // Remove is_synced and other local-only columns before pushing
         const recordsToPush = unsynced.map(record => {
-            const { is_synced, ...rest } = record;
+            const { is_synced, location, last_active, ...rest } = record;
             return rest;
         });
 
@@ -48,6 +48,54 @@ export async function pushSync() {
       console.error(`Sync error on table ${table}:`, err);
     }
   }
+}
+
+// Pull cloud changes from Supabase to local SQLite
+export async function pullSync() {
+  if (!supabase) return;
+
+  const tables = [
+    { name: 'businesses', columns: ['id', 'name', 'email', 'phone', 'location', 'logo', 'payment_config', 'mobile_app_requested', 'subscription_status', 'updated_at', 'created_at'] },
+    { name: 'users', columns: ['id', 'name', 'pin', 'email', 'role', 'active', 'business_id', 'otp', 'otpExpires', 'updated_at', 'created_at'] },
+    { name: 'products', columns: ['id', 'business_id', 'name', 'category', 'price', 'unit', 'stock', 'barcode', 'image', 'lowStockThreshold', 'updated_at', 'created_at'] },
+    { name: 'suppliers', columns: ['id', 'business_id', 'name', 'phone', 'goods', 'updated_at', 'created_at'] },
+    { name: 'sales', columns: ['id', 'business_id', 'total', 'paymentMethod', 'cashierId', 'cashierName', 'mpesaRef', 'updated_at', 'timestamp'] },
+    { name: 'sale_items', columns: ['id', 'saleId', 'productId', 'productName', 'quantity', 'price', 'total', 'updated_at'] }
+  ];
+
+  console.log('Initiating Cloud Restore (pullSync) from Supabase...');
+
+  for (const table of tables) {
+    try {
+      const { data: cloudRecords, error } = await supabase.from(table.name).select('*');
+      if (error) throw error;
+      
+      if (!cloudRecords || cloudRecords.length === 0) continue;
+
+      const connection = await pool.getConnection();
+      try {
+        await connection.beginTransaction();
+        
+        const placeholders = table.columns.map(() => '?').join(', ');
+        const query = `INSERT OR IGNORE INTO ${table.name} (${table.columns.join(', ')}, is_synced) VALUES (${placeholders}, 1)`;
+        
+        for (const record of cloudRecords) {
+           const values = table.columns.map(col => record[col] !== undefined ? record[col] : null);
+           await connection.query(query, values);
+        }
+        
+        await connection.commit();
+      } catch (e) {
+        await connection.rollback();
+        console.error(`Failed to restore table ${table.name}:`, e);
+      } finally {
+        connection.release();
+      }
+    } catch (err) {
+      console.error(`Error pulling from Supabase table ${table.name}:`, err);
+    }
+  }
+  console.log('Cloud Restore complete.');
 }
 
 // Start background sync loop

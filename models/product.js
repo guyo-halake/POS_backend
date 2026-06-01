@@ -39,3 +39,31 @@ export async function updateProduct(id, updates) {
 export async function deleteProduct(id) {
   await pool.query('DELETE FROM products WHERE id = ?', [id]);
 }
+
+export async function createBulkProducts(productsArray, businessId) {
+  const connection = await pool.getConnection();
+  try {
+    await connection.beginTransaction();
+    const insertedIds = [];
+    
+    for (const product of productsArray) {
+      const { name, category, price, unit, stock, barcode, image, lowStockThreshold } = product;
+      const id = uuidv4();
+      const bizId = businessId || '11111111-1111-1111-1111-111111111111';
+      
+      await connection.query(
+        'INSERT INTO products (id, business_id, name, category, price, unit, stock, barcode, image, lowStockThreshold) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+        [id, bizId, name, category, price, unit, stock, barcode, image, lowStockThreshold || 10]
+      );
+      insertedIds.push(id);
+    }
+    
+    await connection.commit();
+    return insertedIds;
+  } catch (error) {
+    await connection.rollback();
+    throw error;
+  } finally {
+    connection.release();
+  }
+}

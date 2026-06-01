@@ -105,7 +105,7 @@ router.get('/businesses', async (req, res) => {
       biz.manager = managers.length > 0 ? managers[0] : null;
 
       // Get all users for this business
-      const [users] = await pool.query("SELECT id, name, role, email, phone, last_active, active FROM users WHERE business_id = ?", [biz.id]);
+      const [users] = await pool.query("SELECT id, name, role, email, last_active, active FROM users WHERE business_id = ?", [biz.id]);
       biz.users = users;
       biz.userCount = users.length;
 

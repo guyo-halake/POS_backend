@@ -148,13 +148,13 @@ router.post('/reset-pin', async (req, res) => {
 });
 // Create new user (Sign Up)
 router.post('/', async (req, res) => {
-  const { name, pin, email, role } = req.body;
-  if (!name || !pin || !email || !role) {
+  const { name, pin, email, role, business_id } = req.body;
+  if (!name || !pin || !role) {
     return res.status(400).json({ success: false, error: 'Missing fields' });
   }
-  // Create user in MySQL
-  const id = await createUser({ name, pin, email, role });
-  res.json({ success: true, user: { id, name, pin, email, role, active: 1 } });
+  // Create user in MySQL/SQLite
+  const id = await createUser({ name, pin, email, role, business_id });
+  res.json({ success: true, user: { id, name, pin, email, role, active: 1, business_id } });
 });
 
 router.put('/:id', async (req, res) => {
@@ -271,7 +271,8 @@ router.post('/create-client', async (req, res) => {
     } catch (error) {
         await connection.rollback();
         console.error("Create Client Error:", error);
-        res.status(500).json({ success: false, error: error.code === 'ER_DUP_ENTRY' ? 'PIN already in use' : 'Failed to create client' });
+        const isDuplicate = error.code === 'ER_DUP_ENTRY' || error.code === 'SQLITE_CONSTRAINT_UNIQUE' || error.message?.includes('UNIQUE constraint failed');
+        res.status(500).json({ success: false, error: isDuplicate ? 'PIN already in use. Please choose a different 4-digit PIN.' : 'Failed to create client' });
     } finally {
         connection.release();
     }

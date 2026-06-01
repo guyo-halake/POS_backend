@@ -11,9 +11,10 @@ export async function getAllUsers() {
   return rows;
 }
 
-export async function createUser({ name, pin, email, role }) {
+export async function createUser({ name, pin, email, role, business_id }) {
   const id = uuidv4();
-  await pool.query('INSERT INTO users (id, name, pin, email, role, active, business_id) VALUES (?, ?, ?, ?, ?, 1, ?)', [id, name, pin, email, role, '11111111-1111-1111-1111-111111111111']);
+  const bizId = business_id || '11111111-1111-1111-1111-111111111111';
+  await pool.query('INSERT INTO users (id, name, pin, email, role, active, business_id) VALUES (?, ?, ?, ?, ?, 1, ?)', [id, name, pin, email || null, role, bizId]);
   return id;
 }
 

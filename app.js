@@ -14,7 +14,7 @@ import developerRouter from './routes/developer.js';
 import pool from './database/db.js';
 import { initSalesTables } from './models/sale.js';
 import { initDatabase } from './database/init.js';
-import { startSyncEngine } from './services/syncEngine.js';
+import { startSyncEngine, pullSync } from './services/syncEngine.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -57,6 +57,9 @@ const startDb = async () => {
     await initDatabase(); // Init users/products
     await initSalesTables(); // Init sales/mpesa
     console.log('Database tables initialized');
+    
+    // Cloud Restore: Pull data from Supabase into local SQLite
+    await pullSync();
     
     // Start background sync to Supabase
     startSyncEngine();

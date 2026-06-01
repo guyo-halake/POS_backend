@@ -35,6 +35,28 @@ router.post('/', async (req, res) => {
   }
 });
 
+// Bulk add products
+router.post('/bulk', async (req, res) => {
+  try {
+    const businessId = req.headers['x-business-id'] || '11111111-1111-1111-1111-111111111111';
+    const productsArray = req.body.products;
+    
+    if (!Array.isArray(productsArray) || productsArray.length === 0) {
+       return res.status(400).json({ success: false, error: 'Invalid or empty products array' });
+    }
+
+    // Dynamic import to use the new function
+    const { createBulkProducts } = await import('../models/product.js');
+    const insertedIds = await createBulkProducts(productsArray, businessId);
+    
+    await createLog(req.headers['x-user-id'] || 0, req.headers['x-user-name'] || 'System', 'INVENTORY_BULK_ADD', `Bulk added ${insertedIds.length} products`);
+    res.status(201).json({ success: true, count: insertedIds.length });
+  } catch (err) {
+    console.error("Bulk insert failed", err);
+    res.status(500).json({ success: false, error: 'Failed to bulk add products' });
+  }
+});
+
 // Update a product
 router.put('/:id', async (req, res) => {
   try {
