@@ -11,10 +11,14 @@ import mpesaRouter from './routes/mpesaRoutes.js';
 import paystackRouter from './routes/paystackRoutes.js';
 import auditLogsRouter from './routes/auditLogs.js';
 import developerRouter from './routes/developer.js';
+import reportsRouter from './routes/reports.js';
+import expensesRouter from './routes/expenses.js';
 import pool from './database/db.js';
 import { initSalesTables } from './models/sale.js';
 import { initDatabase } from './database/init.js';
 import { startSyncEngine, pullSync } from './services/syncEngine.js';
+import { spawn } from 'child_process';
+import nodemailer from 'nodemailer';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -50,6 +54,58 @@ app.use('/api/mpesa', mpesaRouter);
 app.use('/api/paystack', paystackRouter);
 app.use('/api/audit-logs', auditLogsRouter);
 app.use('/api/developer', developerRouter);
+app.use('/api/reports', reportsRouter);
+app.use('/api/expenses', expensesRouter);
+
+// Daily 9:30 PM Automated Closing Report Dispatcher
+let lastCronRunDate = '';
+setInterval(async () => {
+  const now = new Date();
+  const dateStr = now.toISOString().split('T')[0];
+  
+  // 9:30 PM is 21:30 local time
+  if (now.getHours() === 21 && now.getMinutes() === 30 && lastCronRunDate !== dateStr) {
+    lastCronRunDate = dateStr;
+    console.log('[Scheduler] Running automated 9:30 PM Daily Sales Dispatch...');
+    
+    try {
+      const scriptPath = path.join(__dirname, './services/report_generator.py');
+      const geminiKey = process.env.GEMINI_API_KEY || '';
+      
+      const python = spawn('python3', [scriptPath, '--range=today', `--gemini-key=${geminiKey}`]);
+      let output = '';
+      
+      python.stdout.on('data', (d) => { output += d.toString(); });
+      python.on('close', async (code) => {
+        if (code !== 0) return console.error('[Scheduler] Python report generation failed');
+        
+        try {
+          const reportData = JSON.parse(output.trim());
+          const reportsDir = path.join(__dirname, './data/reports');
+          if (!fs.existsSync(reportsDir)) fs.mkdirSync(reportsDir, { recursive: true });
+          
+          const pdfFileName = `sales_report_daily_cron_${Date.now()}.pdf`;
+          const pdfPath = path.join(reportsDir, pdfFileName);
+          
+          const { generatePDFReport, emailReport } = await import('./routes/reports.js');
+          await generatePDFReport(reportData, pdfPath);
+          
+          const recipient = process.env.EMAIL_USER || process.env.SMTP_EMAIL;
+          if (recipient) {
+            await emailReport(pdfPath, reportData.metadata.period_label, recipient);
+            console.log(`[Scheduler] Daily sales dispatch email sent successfully to ${recipient}`);
+          } else {
+            console.warn('[Scheduler] EMAIL_USER is not configured. Automated dispatch email skipped.');
+          }
+        } catch (e) {
+          console.error('[Scheduler] Failed to generate/email report', e);
+        }
+      });
+    } catch (e) {
+      console.error('[Scheduler] Dispatch crashed', e);
+    }
+  }
+}, 30000);
 
 // Initialize DB tables (Wrapped to prevent startup crash)
 const startDb = async () => {

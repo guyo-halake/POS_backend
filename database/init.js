@@ -142,6 +142,25 @@ export async function initDatabase() {
       )
     `);
 
+    // Create expenses table
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS expenses (
+        id TEXT PRIMARY KEY,
+        amount REAL NOT NULL,
+        category TEXT,
+        description TEXT,
+        timestamp TEXT DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
+
+    // Try adding buying_price to products table
+    try {
+      await pool.query('ALTER TABLE products ADD COLUMN buying_price REAL DEFAULT 0.0');
+      console.log('Added buying_price column to products table.');
+    } catch (e) {
+      // Column probably already exists, safe to ignore
+    }
+
     const defaultBizId = '11111111-1111-1111-1111-111111111111';
     const [biz] = await pool.query('SELECT * FROM businesses WHERE id = ?', [defaultBizId]);
     if (biz.length === 0) {
