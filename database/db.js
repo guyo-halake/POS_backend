@@ -33,7 +33,7 @@ function defaultDbPath() {
   return path.join(dbDir, 'pos.db');
 }
 
-const dbPath = defaultDbPath();
+export const dbPath = defaultDbPath();
 
 // Log resolved DB path for easier debugging in packaged apps
 try {
@@ -45,17 +45,42 @@ try {
 const sqlite = new Database(dbPath);
 sqlite.pragma('foreign_keys = ON');
 
+// --- Backup Implementation ---
+function performBackup() {
+  try {
+    const backupDir = path.join(path.dirname(dbPath), 'backups');
+    if (!fs.existsSync(backupDir)) fs.mkdirSync(backupDir, { recursive: true });
+    
+    const dateStr = new Date().toISOString().split('T')[0];
+    const backupFile = path.join(backupDir, `pos_backup_${dateStr}.db`);
+    
+    if (!fs.existsSync(backupFile)) {
+      sqlite.backup(backupFile)
+        .then(() => console.log(`[BACKUP] Database successfully backed up to ${backupFile}`))
+        .catch(err => console.error('[BACKUP] Database backup failed', err));
+    }
+  } catch (e) {
+    console.error('[BACKUP] Database backup setup failed', e);
+  }
+}
+
+// Run backup immediately on startup
+performBackup();
+// Setup interval check (every 12 hours)
+setInterval(performBackup, 12 * 60 * 60 * 1000);
+// -----------------------------
+
 function normalizeSql(sql) {
   let query = String(sql).trim();
   query = query.replace(/`/g, '');
-  query = query.replace(/CURDATE\(\)/gi, "date('now')");
-  query = query.replace(/NOW\(\)/gi, "CURRENT_TIMESTAMP");
-  query = query.replace(/DATE_SUB\(CURRENT_TIMESTAMP, INTERVAL (\d+) WEEK\)/gi, "datetime('now', '-$1 week')");
-  query = query.replace(/DATE_SUB\(CURRENT_TIMESTAMP, INTERVAL (\d+) MONTH\)/gi, "datetime('now', '-$1 month')");
-  query = query.replace(/DATE_SUB\(CURRENT_TIMESTAMP, INTERVAL (\d+) YEAR\)/gi, "datetime('now', '-$1 year')");
-  query = query.replace(/DATE_SUB\(NOW\(\), INTERVAL (\d+) WEEK\)/gi, "datetime('now', '-$1 week')");
-  query = query.replace(/DATE_SUB\(NOW\(\), INTERVAL (\d+) MONTH\)/gi, "datetime('now', '-$1 month')");
-  query = query.replace(/DATE_SUB\(NOW\(\), INTERVAL (\d+) YEAR\)/gi, "datetime('now', '-$1 year')");
+  query = query.replace(/CURDATE\(\)/gi, "date('now', 'localtime')");
+  query = query.replace(/NOW\(\)/gi, "datetime('now', 'localtime')");
+  query = query.replace(/DATE_SUB\(CURRENT_TIMESTAMP, INTERVAL (\d+) WEEK\)/gi, "datetime('now', 'localtime', '-$1 week')");
+  query = query.replace(/DATE_SUB\(CURRENT_TIMESTAMP, INTERVAL (\d+) MONTH\)/gi, "datetime('now', 'localtime', '-$1 month')");
+  query = query.replace(/DATE_SUB\(CURRENT_TIMESTAMP, INTERVAL (\d+) YEAR\)/gi, "datetime('now', 'localtime', '-$1 year')");
+  query = query.replace(/DATE_SUB\(NOW\(\), INTERVAL (\d+) WEEK\)/gi, "datetime('now', 'localtime', '-$1 week')");
+  query = query.replace(/DATE_SUB\(NOW\(\), INTERVAL (\d+) MONTH\)/gi, "datetime('now', 'localtime', '-$1 month')");
+  query = query.replace(/DATE_SUB\(NOW\(\), INTERVAL (\d+) YEAR\)/gi, "datetime('now', 'localtime', '-$1 year')");
   return query;
 }
 

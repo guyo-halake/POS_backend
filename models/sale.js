@@ -1,8 +1,15 @@
 import pool from '../database/db.js';
 
 // Get all sales with items
-export async function getAllSales() {
-  const [sales] = await pool.query('SELECT * FROM sales ORDER BY timestamp DESC');
+export async function getAllSales(businessId) {
+  let query = 'SELECT * FROM sales';
+  const params = [];
+  if (businessId) {
+    query += ' WHERE business_id = ?';
+    params.push(businessId);
+  }
+  query += ' ORDER BY timestamp DESC';
+  const [sales] = await pool.query(query, params);
   
   if (sales.length === 0) return [];
 
@@ -13,12 +20,19 @@ export async function getAllSales() {
   // Attach items to sales
   return sales.map(sale => ({
     ...sale,
-    items: items.filter(item => item.saleId === sale.id)
+    items: items.filter(item => item.saleId === sale.id).map(item => ({
+      quantity: item.quantity,
+      product: {
+        id: item.productId,
+        name: item.productName,
+        price: item.price
+      }
+    }))
   }));
 }
 
 // Get dashboard stats
-export async function getDashboardStats(range = 'today') {
+export async function getDashboardStats(businessId, range = 'today') {
   const connection = await pool.getConnection();
   try {
     let dateFilter;
@@ -35,30 +49,46 @@ export async function getDashboardStats(range = 'today') {
       dateFilter = '1=1';
     }
 
-    // Total Sales
-    const [salesResult] = await connection.query(`SELECT SUM(total) as total, COUNT(*) as count FROM sales WHERE ${dateFilter}`);
-    
+    const bizFilter = businessId ? `business_id = ? AND ` : '';
+    const params = businessId ? [businessId] : [];
+
+    // Total Sales & True Profit
+    // Use subquery for profit to avoid duplicating s.total when a sale has multiple items
+    const [salesResult] = await connection.query(`
+      SELECT 
+        SUM(s.total) as total, 
+        COUNT(s.id) as count,
+        (
+          SELECT SUM((si.price - COALESCE(p.buying_price, 0)) * si.quantity)
+          FROM sale_items si
+          LEFT JOIN products p ON si.productId = p.id
+          WHERE si.saleId IN (SELECT id FROM sales s2 WHERE ${bizFilter.replace('business_id', 's2.business_id')}${dateFilter.replace('timestamp', 's2.timestamp')})
+        ) as trueProfit
+      FROM sales s
+      WHERE ${bizFilter.replace('business_id', 's.business_id')}${dateFilter.replace('timestamp', 's.timestamp')}
+    `, [...params, ...params]);
     // Payment Methods
     const [paymentResult] = await connection.query(`
       SELECT paymentMethod, SUM(total) as total, COUNT(*) as count 
-      FROM sales WHERE ${dateFilter} 
+      FROM sales WHERE ${bizFilter}${dateFilter} 
       GROUP BY paymentMethod
-    `);
+    `, params);
 
     // Top Selling Products
     const [topProducts] = await connection.query(`
       SELECT productName, SUM(quantity) as sold, SUM(price * quantity) as revenue 
       FROM sale_items 
       JOIN sales ON sale_items.saleId = sales.id 
-      WHERE ${dateFilter}
+      WHERE ${bizFilter ? 'sales.business_id = ? AND ' : ''}${dateFilter.replace('timestamp', 'sales.timestamp')}
       GROUP BY productId, productName 
       ORDER BY sold DESC 
       LIMIT 10
-    `);
+    `, params);
 
     return {
       totalRevenue: salesResult[0].total || 0,
       totalCount: salesResult[0].count || 0,
+      totalProfit: salesResult[0].trueProfit || 0,
       payments: paymentResult,
       topProducts
     };
@@ -69,7 +99,7 @@ export async function getDashboardStats(range = 'today') {
 }
 
 // Create a new sale
-export async function createSale(sale) {
+export async function createSale(sale, businessId = 'default_business') {
   const connection = await pool.getConnection();
   try {
     await connection.beginTransaction();
@@ -78,8 +108,8 @@ export async function createSale(sale) {
 
     // Insert into sales table
     await connection.query(
-      'INSERT INTO sales (id, total, paymentMethod, cashierId, cashierName, mpesaRef, is_synced, updated_at) VALUES (?, ?, ?, ?, ?, ?, 0, CURRENT_TIMESTAMP)',
-      [id, total, paymentMethod, cashierId, cashierName, mpesaRef]
+      'INSERT INTO sales (id, business_id, total, paymentMethod, cashierId, cashierName, mpesaRef, is_synced, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, 0, CURRENT_TIMESTAMP)',
+      [id, businessId, total, paymentMethod, cashierId, cashierName, mpesaRef]
     );
 
     // Insert items

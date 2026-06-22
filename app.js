@@ -1,6 +1,10 @@
 import 'dotenv/config';
 import express from 'express';
 import cors from 'cors';
+import dns from 'node:dns';
+
+// Fix Node 18+ IPv6 fetch ETIMEDOUT issues by prioritizing IPv4
+dns.setDefaultResultOrder('ipv4first');
 import bodyParser from 'body-parser';
 import path from 'path';
 import { fileURLToPath } from 'url';
@@ -13,6 +17,7 @@ import auditLogsRouter from './routes/auditLogs.js';
 import developerRouter from './routes/developer.js';
 import reportsRouter from './routes/reports.js';
 import expensesRouter from './routes/expenses.js';
+import suppliersRouter from './routes/suppliers.js';
 import pool from './database/db.js';
 import { initSalesTables } from './models/sale.js';
 import { initDatabase } from './database/init.js';
@@ -56,6 +61,7 @@ app.use('/api/audit-logs', auditLogsRouter);
 app.use('/api/developer', developerRouter);
 app.use('/api/reports', reportsRouter);
 app.use('/api/expenses', expensesRouter);
+app.use('/api/suppliers', suppliersRouter);
 
 // Daily 9:30 PM Automated Closing Report Dispatcher
 let lastCronRunDate = '';
