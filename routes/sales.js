@@ -5,7 +5,8 @@ const router = express.Router();
 
 router.get('/', async (req, res) => {
   try {
-    const sales = await getAllSales();
+    const businessId = req.headers['x-business-id'];
+    const sales = await getAllSales(businessId);
     res.json(sales);
   } catch (err) {
     console.error(err);
@@ -15,8 +16,9 @@ router.get('/', async (req, res) => {
 
 router.get('/stats', async (req, res) => {
   try {
+    const businessId = req.headers['x-business-id'];
     const range = req.query.range || 'today';
-    const stats = await getDashboardStats(range);
+    const stats = await getDashboardStats(businessId, range);
     res.json(stats);
   } catch (err) {
     console.error(err);
@@ -26,7 +28,8 @@ router.get('/stats', async (req, res) => {
 
 router.post('/', async (req, res) => {
   try {
-    const saleId = await createSale(req.body);
+    const businessId = req.headers['x-business-id'] || 'default_business';
+    const saleId = await createSale(req.body, businessId);
     await createLog(req.body.cashierId, req.body.cashierName || 'Unknown', 'SALE', `Sale completed. Total: ${req.body.total}`);
     res.json({ success: true, id: saleId });
   } catch (err) {
