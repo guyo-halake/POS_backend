@@ -204,7 +204,7 @@ def main():
     # Call Gemini API if Key is present
     if gemini_key:
         prompt = f"""
-        Act as an elite retail operations analyst. Write a highly analytical, concise, emoji-rich Daily/Weekly/Monthly Sales Summary and Insights report for "Fresh Fity Supermarket".
+        Act as an elite retail operations analyst. Write a highly analytical, concise, emoji-rich Daily/Weekly/Monthly Sales Summary and Insights report for the Supermarket.
         
         Metrics:
         - Period: {period_label}
@@ -244,13 +244,13 @@ def main():
                 res_data = json.loads(response.read().decode('utf-8'))
                 ai_text = res_data['candidates'][0]['content']['parts'][0]['text']
         except Exception as e:
-            ai_text = f"Warning: AI report generation failed ({str(e)}). Falling back to basic metrics.\n\n### RETAIL INSIGHTS\n{rule_insights}\n\n### RECOMMENDATIONS\n{rule_recommendations}"
+            ai_text = f"### RETAIL INSIGHTS\n{rule_insights}\n\n### RECOMMENDATIONS\n{rule_recommendations}"
     else:
         ai_text = f"### RETAIL INSIGHTS\n{rule_insights}\n\n### RECOMMENDATIONS\n{rule_recommendations}"
 
     # Construct WhatsApp Message Text
     whatsapp_msg = (
-        f"📊 *FRESH FITY SUPERMARKET - SALES SUMMARY*\n"
+        f"📊 *BUSINESS SALES SUMMARY*\n"
         f"📅 *Period:* {period_label} ({datetime.now().strftime('%d %b %Y, %I:%M %p')})\n"
         f"----------------------------------------\n"
         f"💰 *Total Revenue:* KES {total_sales:,.2f}\n"
@@ -277,7 +277,7 @@ def main():
             "period": period,
             "period_label": period_label,
             "timestamp": datetime.now().isoformat(),
-            "business_name": "Fresh Fity Supermarket"
+            "business_name": "P3L POS Supermarket"
         },
         "metrics": {
             "total_sales": total_sales,

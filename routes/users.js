@@ -32,7 +32,8 @@ async function sendOTP({ method, to, message }) {
 // Get all users
 router.get('/', async (req, res) => {
   try {
-    const users = await getAllUsers();
+    const businessId = req.headers['x-business-id'];
+    const users = await getAllUsers(businessId);
     res.json(users);
   } catch (err) {
     res.status(500).json({ error: 'Failed to fetch users' });
@@ -146,21 +147,92 @@ router.post('/reset-pin', async (req, res) => {
   }
   res.json({ success: true, message: 'PIN changed and notifications sent.' });
 });
-// Create new user (Sign Up)
+// Create new user (Sign Up or Admin Adding Staff)
 router.post('/', async (req, res) => {
-  const { name, pin, email, role, business_id } = req.body;
+  const { name, pin, email, phone, role, business_id, adminEmail, supermarketName } = req.body;
   if (!name || !pin || !role) {
     return res.status(400).json({ success: false, error: 'Missing fields' });
   }
   // Create user in MySQL/SQLite
-  const id = await createUser({ name, pin, email, role, business_id });
-  res.json({ success: true, user: { id, name, pin, email, role, active: 1, business_id } });
+  const id = await createUser({ name, pin, email, phone, role, business_id });
+
+  // Send Notification Emails if adminEmail is provided (Adding Staff flow)
+  if (adminEmail && supermarketName) {
+    try {
+      let transporter = nodemailer.createTransport({
+        service: 'gmail',
+        auth: {
+          user: process.env.EMAIL_USER,
+          pass: process.env.EMAIL_PASS,
+        },
+      });
+
+      // Email to Admin
+      const adminHtml = `
+        <div style="font-family:sans-serif;max-width:500px;margin:auto;padding:24px;border-radius:8px;background:#f9f9f9;border:1px solid #ddd;">
+          <h2>Staff Added Successfully</h2>
+          <p>Confirmed you have successfully added user name <b>${name}</b> and phone number <b>${phone || 'N/A'}</b> to your P3L Point Of Sale Accounts.</p>
+          <p>${name} will now be able to access your pos using his PIN.</p>
+          <p>Please click here to continue and manage your profiles and give your link:</p>
+          <a href="https://p3lpos.vercel.app" style="display:inline-block;padding:10px 20px;background:#000;color:#fff;text-decoration:none;border-radius:4px;font-weight:bold;">p3lpos.vercel.app</a>
+        </div>
+      `;
+      transporter.sendMail({
+        from: process.env.EMAIL_USER,
+        to: adminEmail,
+        subject: 'P3L POS - Staff Added Confirmation',
+        html: adminHtml,
+      }).catch(console.error);
+
+      // Email to New Staff (Cashier/Manager)
+      if (email) {
+        const staffHtml = `
+          <div style="font-family:sans-serif;max-width:500px;margin:auto;padding:24px;border-radius:8px;background:#f9f9f9;border:1px solid #ddd;">
+            <h2>Welcome ${name},</h2>
+            <p>You have been added to P3L POS <b>${supermarketName}</b> as a <b>${role.toUpperCase()}</b>.</p>
+            <p>The system is physically available at shop but can also be accessed online using the link.</p>
+            <p>Use the following information to login and access your account:</p>
+            <ul>
+              <li><b>Email:</b> ${email}</li>
+              <li><b>Phone:</b> ${phone || 'N/A'}</li>
+              <li><b>Login PIN:</b> ${pin}</li>
+            </ul>
+            <a href="https://p3lpos.vercel.app" style="display:inline-block;padding:10px 20px;background:#000;color:#fff;text-decoration:none;border-radius:4px;font-weight:bold;">Login to POS</a>
+          </div>
+        `;
+        transporter.sendMail({
+          from: process.env.EMAIL_USER,
+          to: email,
+          subject: `Welcome to ${supermarketName} POS`,
+          html: staffHtml,
+        }).catch(console.error);
+      }
+    } catch (e) {
+      console.error('Failed to send notification emails', e);
+    }
+  }
+
+  res.json({ success: true, user: { id, name, pin, email, phone, role, active: 1, business_id } });
 });
 
 router.put('/:id', async (req, res) => {
   try {
     const updated = await updateUser(req.params.id, req.body);
-    res.json({ success: !!updated });
+    
+    // Update business settings if provided
+    if (req.body.business && req.body.business.id) {
+      const biz = req.body.business;
+      const paymentConfig = JSON.stringify({
+        uiSettings: biz.uiSettings,
+        receiptSettings: biz.receiptSettings,
+        paymentMng: biz.paymentMng,
+        paymentGateway: biz.paymentGateway
+      });
+      const bizName = biz.receiptSettings?.supermarketName || biz.name;
+      await pool.query('UPDATE businesses SET payment_config = ?, name = ? WHERE id = ?', [paymentConfig, bizName, biz.id]);
+    }
+
+    res.json({ success: true });
   } catch (err) {
     res.status(500).json({ error: 'Failed to update user' });
   }
@@ -289,7 +361,17 @@ router.post('/login', async (req, res) => {
         let business = null;
         if (user.business_id) {
             const [bizRows] = await pool.query('SELECT * FROM businesses WHERE id = ?', [user.business_id]);
-            if (bizRows.length > 0) business = bizRows[0];
+            if (bizRows.length > 0) {
+                business = bizRows[0];
+                if (business.payment_config) {
+                    try {
+                        const parsedConfig = JSON.parse(business.payment_config);
+                        Object.assign(business, parsedConfig);
+                    } catch (e) {
+                        console.error('Failed to parse payment_config', e);
+                    }
+                }
+            }
         }
 
         const userWithBiz = { ...user, business };

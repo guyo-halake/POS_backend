@@ -2,13 +2,9 @@ import pool from '../database/db.js';
 
 // Get all sales with items
 export async function getAllSales(businessId) {
-  let query = 'SELECT * FROM sales';
-  const params = [];
-  if (businessId) {
-    query += ' WHERE business_id = ?';
-    params.push(businessId);
-  }
-  query += ' ORDER BY timestamp DESC';
+  const bizId = businessId || '11111111-1111-1111-1111-111111111111';
+  let query = 'SELECT * FROM sales WHERE business_id = ? ORDER BY timestamp DESC';
+  const params = [bizId];
   const [sales] = await pool.query(query, params);
   
   if (sales.length === 0) return [];

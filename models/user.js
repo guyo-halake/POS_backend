@@ -6,20 +6,21 @@ export async function getUserByPin(pin) {
   return rows[0];
 }
 
-export async function getAllUsers() {
-  const [rows] = await pool.query('SELECT * FROM users WHERE active = 1');
+export async function getAllUsers(businessId) {
+  const bizId = businessId || '11111111-1111-1111-1111-111111111111';
+  const [rows] = await pool.query('SELECT * FROM users WHERE active = 1 AND business_id = ?', [bizId]);
   return rows;
 }
 
-export async function createUser({ name, pin, email, role, business_id }) {
+export async function createUser({ name, pin, email, phone, role, business_id }) {
   const id = uuidv4();
   const bizId = business_id || '11111111-1111-1111-1111-111111111111';
-  await pool.query('INSERT INTO users (id, name, pin, email, role, active, business_id) VALUES (?, ?, ?, ?, ?, 1, ?)', [id, name, pin, email || null, role, bizId]);
+  await pool.query('INSERT INTO users (id, name, pin, email, phone, role, active, business_id) VALUES (?, ?, ?, ?, ?, ?, 1, ?)', [id, name, pin, email || null, phone || null, role, bizId]);
   return id;
 }
 
 export async function updateUser(id, updates) {
-  const { name, pin, email, role, active, otp, otpExpires } = updates;
+  const { name, pin, email, phone, role, active, otp, otpExpires } = updates;
   let query = 'UPDATE users SET ';
   const params = [];
   const fields = [];
@@ -27,6 +28,7 @@ export async function updateUser(id, updates) {
   if (name !== undefined) { fields.push('name = ?'); params.push(name); }
   if (pin !== undefined) { fields.push('pin = ?'); params.push(pin); }
   if (email !== undefined) { fields.push('email = ?'); params.push(email); }
+  if (phone !== undefined) { fields.push('phone = ?'); params.push(phone); }
   if (role !== undefined) { fields.push('role = ?'); params.push(role); }
   if (active !== undefined) { fields.push('active = ?'); params.push(active ? 1 : 0); }
   if (otp !== undefined) { fields.push('otp = ?'); params.push(otp); }
