@@ -24,6 +24,7 @@ router.get('/status', async (req, res) => {
       success: true,
       primaryDatabase: 'Local SQLite',
       primaryStatus: sqliteStatus,
+      databasePath: dbPath,
       syncTarget: 'Supabase PostgreSQL',
       syncStatus: supabaseStatus,
       paystackStatus: paystackStatus,
@@ -61,6 +62,29 @@ router.get('/backup', (req, res) => {
   } catch (err) {
     console.error('Backup failed:', err);
     res.status(500).json({ error: 'Backup failed' });
+  }
+});
+
+// Clear all sales data
+router.post('/wipe-sales', async (req, res) => {
+  try {
+    await pool.query('DELETE FROM sale_items');
+    await pool.query('DELETE FROM sales');
+    res.json({ success: true, message: 'All sales data cleared' });
+  } catch (err) {
+    console.error('Wipe sales failed:', err);
+    res.status(500).json({ error: 'Failed to clear sales data' });
+  }
+});
+
+// Clear all products data
+router.post('/wipe-products', async (req, res) => {
+  try {
+    await pool.query('DELETE FROM products');
+    res.json({ success: true, message: 'All products cleared' });
+  } catch (err) {
+    console.error('Wipe products failed:', err);
+    res.status(500).json({ error: 'Failed to clear products' });
   }
 });
 
@@ -238,8 +262,6 @@ router.post('/tickets', async (req, res) => {
 });
 
 // --- SEEDERS ---
-const bcrypt = require('bcryptjs');
-
 router.post('/seed-users', async (req, res) => {
   try {
     const { data } = req.body;
@@ -247,10 +269,9 @@ router.post('/seed-users', async (req, res) => {
     
     for (const user of data) {
       if (!user.name || !user.email || !user.pin || !user.role) continue;
-      const hashedPin = await bcrypt.hash(user.pin.toString(), 10);
       await pool.query(
         'INSERT INTO users (business_id, name, email, pin, role) VALUES (?, ?, ?, ?, ?)',
-        [user.business_id, user.name, user.email, hashedPin, user.role.toLowerCase()]
+        [user.business_id, user.name, user.email, user.pin.toString(), user.role.toLowerCase()]
       );
     }
     res.json({ success: true });
@@ -327,12 +348,36 @@ router.put('/businesses/:id', async (req, res) => {
   try {
     await pool.query(
       'UPDATE businesses SET name=?, email=?, phone=?, location=?, logo=?, payment_config=? WHERE id=?',
-      [name, email, phone, location, logo, typeof payment_config === 'object' ? JSON.stringify(payment_config) : payment_config, id]
+      [name || null, email || null, phone || null, location || null, logo || null, typeof payment_config === 'object' ? JSON.stringify(payment_config) : payment_config || null, id]
     );
     res.json({ success: true });
   } catch (err) {
     console.error('Failed to update business:', err);
     res.status(500).json({ error: 'Failed to update business' });
+  }
+});
+
+// Admin wipe sales route
+router.post('/wipe-sales', async (req, res) => {
+  try {
+    const businessId = req.headers['x-business-id'] || 'default_business';
+    await pool.query('DELETE FROM sales WHERE business_id = ?', [businessId]);
+    res.json({ success: true });
+  } catch (err) {
+    console.error('Failed to wipe sales:', err);
+    res.status(500).json({ error: 'Failed to wipe sales' });
+  }
+});
+
+// Admin wipe products route
+router.post('/wipe-products', async (req, res) => {
+  try {
+    const businessId = req.headers['x-business-id'] || 'default_business';
+    await pool.query('DELETE FROM products WHERE business_id = ?', [businessId]);
+    res.json({ success: true });
+  } catch (err) {
+    console.error('Failed to wipe products:', err);
+    res.status(500).json({ error: 'Failed to wipe products' });
   }
 });
 

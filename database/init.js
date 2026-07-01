@@ -26,6 +26,7 @@ export async function initDatabase() {
         name TEXT NOT NULL,
         pin TEXT NOT NULL UNIQUE,
         email TEXT,
+        phone TEXT,
         role TEXT DEFAULT 'staff',
         active INTEGER DEFAULT 1,
         business_id TEXT DEFAULT '11111111-1111-1111-1111-111111111111',
@@ -49,9 +50,12 @@ export async function initDatabase() {
     // Add last_active to existing users table if it doesn't exist
     try {
       await pool.query('ALTER TABLE users ADD COLUMN last_active TEXT');
-    } catch (e) {
-      // Ignore if column already exists
-    }
+    } catch (e) {}
+
+    // Add phone to existing users table if it doesn't exist
+    try {
+      await pool.query('ALTER TABLE users ADD COLUMN phone TEXT');
+    } catch (e) {}
 
     await pool.query(`
       CREATE TABLE IF NOT EXISTS products (
@@ -60,17 +64,25 @@ export async function initDatabase() {
         name TEXT NOT NULL,
         category TEXT,
         price REAL NOT NULL,
+        buying_price REAL DEFAULT 0,
         unit TEXT,
         stock INTEGER DEFAULT 0,
         barcode TEXT,
         image TEXT,
         lowStockThreshold INTEGER DEFAULT 10,
+        expiry_date TEXT,
+        supplier_id TEXT,
         is_synced INTEGER DEFAULT 0,
         updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
         created_at TEXT DEFAULT CURRENT_TIMESTAMP,
         FOREIGN KEY (business_id) REFERENCES businesses(id)
       )
     `);
+
+    // Add new columns to existing products table if they don't exist
+    try { await pool.query('ALTER TABLE products ADD COLUMN buying_price REAL DEFAULT 0'); } catch (e) {}
+    try { await pool.query('ALTER TABLE products ADD COLUMN expiry_date TEXT'); } catch (e) {}
+    try { await pool.query('ALTER TABLE products ADD COLUMN supplier_id TEXT'); } catch (e) {}
 
     await pool.query(`
       CREATE TABLE IF NOT EXISTS suppliers (
@@ -185,10 +197,12 @@ export async function initDatabase() {
       )
     `);
 
-    // Try adding buying_price to products table
+    // Try adding real-world product metrics to products table
     try {
       await pool.query('ALTER TABLE products ADD COLUMN buying_price REAL DEFAULT 0.0');
-      console.log('Added buying_price column to products table.');
+      await pool.query('ALTER TABLE products ADD COLUMN expiry_date TEXT');
+      await pool.query('ALTER TABLE products ADD COLUMN supplier TEXT');
+      console.log('Added buying_price, expiry_date, and supplier columns to products table.');
     } catch (e) {
       // Column probably already exists, safe to ignore
     }
